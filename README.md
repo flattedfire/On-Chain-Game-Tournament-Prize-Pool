@@ -13,6 +13,7 @@ A comprehensive smart contract built with Clarity for managing game tournaments 
 - 📊 **Prize Distribution**: Customizable percentage-based prize distribution
 - ⛔ **Tournament Cancellation**: Organizers can cancel tournaments and refund participants
 - 🕐 **Unclaimed Fund Recovery**: Organizers can recover unclaimed prizes after timeout
+- 💎 **Tournament Sponsorship**: External parties can sponsor tournaments to boost prize pools
 
 ## 🚀 Quick Start
 
@@ -94,7 +95,35 @@ clarinet check
 - Prize must not have been claimed already
 - Tournament must be ended
 
-### 5. Cancelling a Tournament ❌
+### 5. Sponsoring a Tournament 💎
+
+```clarity
+(contract-call? .on-chain-game-tourrnament-prize-pool sponsor-tournament u1 u5000000)
+```
+
+**Parameters:**
+- `tournament-id`: Tournament to sponsor
+- `amount`: Sponsorship amount in micro-STX
+
+**Requirements:**
+- Tournament must be "open"
+- Sponsorship amount must be greater than 0
+
+### 6. Withdrawing Sponsorship 💸
+
+```clarity
+(contract-call? .on-chain-game-tourrnament-prize-pool withdraw-sponsorship u1)
+```
+
+**Parameters:**
+- `tournament-id`: Tournament to withdraw sponsorship from
+
+**Requirements:**
+- Must be the sponsor
+- Tournament must still be "open"
+- Sponsorship must not have been withdrawn already
+
+### 7. Cancelling a Tournament ❌
 
 ```clarity
 (contract-call? .on-chain-game-tourrnament-prize-pool cancel-tournament u1)
@@ -135,19 +164,37 @@ clarinet check
 (contract-call? .on-chain-game-tourrnament-prize-pool get-prize-pool u1)
 ```
 
+### Check Sponsorship Pool
+```clarity
+(contract-call? .on-chain-game-tourrnament-prize-pool get-sponsorship-pool u1)
+```
+
+### Check Total Prize Pool (Entry Fees + Sponsorships)
+```clarity
+(contract-call? .on-chain-game-tourrnament-prize-pool get-total-prize-pool u1)
+```
+
+### Check Sponsor Information
+```clarity
+(contract-call? .on-chain-game-tourrnament-prize-pool get-sponsor-info u1 'SP1ABC...)
+```
+
 ## 💼 Contract Economics
 
-- **Organizer Fee**: 5% of total prize pool
-- **Prize Distribution**: 95% of prize pool distributed to winners
+- **Organizer Fee**: 5% of total prize pool (entry fees + sponsorships)
+- **Prize Distribution**: 95% of combined prize pool distributed to winners
 - **Entry Fee Locking**: All entry fees immediately locked in contract
+- **Sponsorship Locking**: All sponsorships immediately locked in contract
 - **Refund Policy**: Full refunds available if tournament is cancelled
+- **Sponsorship Withdrawal**: Sponsors can withdraw before tournament ends
 
 ## 🏗️ Architecture
 
-The contract uses two main data structures:
+The contract uses three main data structures:
 
-1. **Tournaments Map**: Stores tournament metadata including organizer, participants, prize pool, and status
+1. **Tournaments Map**: Stores tournament metadata including organizer, participants, prize pools (entry fees + sponsorships), and status
 2. **Participant-Tournaments Map**: Tracks individual participant data including join time, prize amounts, and claim status
+3. **Tournament-Sponsors Map**: Tracks sponsorship contributions with amounts, timestamps, and withdrawal status
 
 ## 🛡️ Security Features
 
@@ -172,6 +219,7 @@ The contract uses two main data structures:
 | u413 | Insufficient balance |
 | u414 | Prize already claimed |
 | u415 | No prize available |
+| u416 | No sponsorship found |
 
 ## 🧪 Testing
 

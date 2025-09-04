@@ -9,6 +9,7 @@
 (define-constant ERR_INSUFFICIENT_BALANCE (err u413))
 (define-constant ERR_PRIZE_ALREADY_CLAIMED (err u414))
 (define-constant ERR_NO_PRIZE (err u415))
+(define-constant ERR_NO_SPONSORSHIP (err u416))
 
 (define-constant CONTRACT_OWNER tx-sender)
 
@@ -19,6 +20,7 @@
     name: (string-ascii 50),
     entry-fee: uint,
     total-pool: uint,
+    sponsorship-pool: uint,
     status: (string-ascii 20),
     participants: (list 100 principal),
     participant-count: uint,
@@ -34,6 +36,12 @@
     prize-amount: uint
 })
 
+(define-map tournament-sponsors {tournament-id: uint, sponsor: principal} {
+    amount: uint,
+    sponsored-at: uint,
+    withdrawn: bool
+})
+
 (define-public (create-tournament (name (string-ascii 50)) (entry-fee uint))
     (let ((tournament-id (+ (var-get tournament-counter) u1)))
         (asserts! (> entry-fee u0) ERR_INVALID_AMOUNT)
@@ -42,6 +50,7 @@
             name: name,
             entry-fee: entry-fee,
             total-pool: u0,
+            sponsorship-pool: u0,
             status: "open",
             participants: (list),
             participant-count: u0,
@@ -85,8 +94,10 @@
 (define-public (end-tournament (tournament-id uint) (winners (list 10 principal)))
     (let ((tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND))
           (total-pool (get total-pool tournament-data))
-          (organizer-fee (/ total-pool u20))
-          (distributable-pool (- total-pool organizer-fee))
+          (sponsorship-pool (get sponsorship-pool tournament-data))
+          (combined-pool (+ total-pool sponsorship-pool))
+          (organizer-fee (/ combined-pool u20))
+          (distributable-pool (- combined-pool organizer-fee))
           (winners-count (len winners))
           (prize-per-winner (if (> winners-count u0) (/ distributable-pool winners-count) u0)))
         (asserts! (is-eq tx-sender (get organizer tournament-data)) ERR_UNAUTHORIZED)
@@ -208,6 +219,49 @@
     )
 )
 
+(define-public (sponsor-tournament (tournament-id uint) (amount uint))
+    (let ((tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND))
+          (current-sponsorship-pool (get sponsorship-pool tournament-data)))
+        (asserts! (> amount u0) ERR_INVALID_AMOUNT)
+        (asserts! (is-eq (get status tournament-data) "open") ERR_TOURNAMENT_ENDED)
+        
+        (try! (stx-transfer? amount tx-sender (as-contract tx-sender)))
+        
+        (map-set tournament-sponsors {tournament-id: tournament-id, sponsor: tx-sender} {
+            amount: amount,
+            sponsored-at: stacks-block-height,
+            withdrawn: false
+        })
+        
+        (map-set tournaments tournament-id (merge tournament-data {
+            sponsorship-pool: (+ current-sponsorship-pool amount)
+        }))
+        
+        (ok amount)
+    )
+)
+
+(define-public (withdraw-sponsorship (tournament-id uint))
+    (let ((tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND))
+          (sponsorship-data (unwrap! (map-get? tournament-sponsors {tournament-id: tournament-id, sponsor: tx-sender}) ERR_NO_SPONSORSHIP))
+          (sponsorship-amount (get amount sponsorship-data))
+          (current-sponsorship-pool (get sponsorship-pool tournament-data)))
+        (asserts! (is-eq (get status tournament-data) "open") ERR_TOURNAMENT_ENDED)
+        (asserts! (not (get withdrawn sponsorship-data)) ERR_ALREADY_EXISTS)
+        
+        (try! (as-contract (stx-transfer? sponsorship-amount tx-sender tx-sender)))
+        
+        (map-set tournament-sponsors {tournament-id: tournament-id, sponsor: tx-sender} 
+                 (merge sponsorship-data {withdrawn: true}))
+        
+        (map-set tournaments tournament-id (merge tournament-data {
+            sponsorship-pool: (- current-sponsorship-pool sponsorship-amount)
+        }))
+        
+        (ok sponsorship-amount)
+    )
+)
+
 (define-read-only (get-tournament (tournament-id uint))
     (map-get? tournaments tournament-id)
 )
@@ -251,7 +305,11 @@
 
 (define-read-only (calculate-organizer-fee (tournament-id uint))
     (match (map-get? tournaments tournament-id)
-        tournament-data (some (/ (get total-pool tournament-data) u20))
+        tournament-data 
+        (let ((total-pool (get total-pool tournament-data))
+              (sponsorship-pool (get sponsorship-pool tournament-data))
+              (combined-pool (+ total-pool sponsorship-pool)))
+            (some (/ combined-pool u20)))
         none
     )
 )
@@ -273,4 +331,25 @@
             count
         )
     )
+)
+
+(define-read-only (get-sponsorship-pool (tournament-id uint))
+    (match (map-get? tournaments tournament-id)
+        tournament-data (some (get sponsorship-pool tournament-data))
+        none
+    )
+)
+
+(define-read-only (get-total-prize-pool (tournament-id uint))
+    (match (map-get? tournaments tournament-id)
+        tournament-data 
+        (let ((total-pool (get total-pool tournament-data))
+              (sponsorship-pool (get sponsorship-pool tournament-data)))
+            (some (+ total-pool sponsorship-pool)))
+        none
+    )
+)
+
+(define-read-only (get-sponsor-info (tournament-id uint) (sponsor principal))
+    (map-get? tournament-sponsors {tournament-id: tournament-id, sponsor: sponsor})
 )
