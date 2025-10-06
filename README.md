@@ -14,6 +14,7 @@ A comprehensive smart contract built with Clarity for managing game tournaments 
 - ⛔ **Tournament Cancellation**: Organizers can cancel tournaments and refund participants
 - 🕐 **Unclaimed Fund Recovery**: Organizers can recover unclaimed prizes after timeout
 - 💎 **Tournament Sponsorship**: External parties can sponsor tournaments to boost prize pools
+- 📊 **Player Statistics & Leaderboard**: Automatic tracking of player performance, wins, and earnings
 
 ## 🚀 Quick Start
 
@@ -179,6 +180,31 @@ clarinet check
 (contract-call? .on-chain-game-tourrnament-prize-pool get-sponsor-info u1 'SP1ABC...)
 ```
 
+### Get Player Statistics
+```clarity
+(contract-call? .on-chain-game-tourrnament-prize-pool get-player-statistics 'SP1ABC...)
+```
+
+### Get Player Win Rate
+```clarity
+(contract-call? .on-chain-game-tourrnament-prize-pool get-player-win-rate 'SP1ABC...)
+```
+
+### Get Player Net Profit
+```clarity
+(contract-call? .on-chain-game-tourrnament-prize-pool get-player-net-profit 'SP1ABC...)
+```
+
+### Get Player Total Wins
+```clarity
+(contract-call? .on-chain-game-tourrnament-prize-pool get-player-total-wins 'SP1ABC...)
+```
+
+### Get Player Total Tournaments
+```clarity
+(contract-call? .on-chain-game-tourrnament-prize-pool get-player-total-tournaments 'SP1ABC...)
+```
+
 ## 💼 Contract Economics
 
 - **Organizer Fee**: 5% of total prize pool (entry fees + sponsorships)
@@ -190,11 +216,12 @@ clarinet check
 
 ## 🏗️ Architecture
 
-The contract uses three main data structures:
+The contract uses four main data structures:
 
 1. **Tournaments Map**: Stores tournament metadata including organizer, participants, prize pools (entry fees + sponsorships), and status
 2. **Participant-Tournaments Map**: Tracks individual participant data including join time, prize amounts, and claim status
 3. **Tournament-Sponsors Map**: Tracks sponsorship contributions with amounts, timestamps, and withdrawal status
+4. **Player-Statistics Map**: Automatically tracks player performance including tournaments joined, wins, total prizes, win rate, and net profit
 
 ## 🛡️ Security Features
 
@@ -203,6 +230,21 @@ The contract uses three main data structures:
 - ✅ Prize double-claim prevention
 - ✅ Automatic fund locking and release
 - ✅ Timeout-based unclaimed fund recovery
+- ✅ Automatic statistics tracking with no manual intervention
+
+## 📈 Player Statistics Tracking
+
+The contract automatically tracks comprehensive player statistics:
+
+- **Tournaments Joined**: Total number of tournaments participated in
+- **Tournaments Won**: Total number of tournament victories
+- **Total Prizes Claimed**: Cumulative STX earned from all winnings
+- **Total Entry Fees Paid**: Cumulative STX spent on tournament entries
+- **Win Rate**: Percentage of tournaments won (calculated as wins/total × 100)
+- **Net Profit**: Total earnings minus total entry fees paid
+- **Last Active**: Block height of most recent tournament activity
+
+All statistics are updated automatically when players join tournaments or claim prizes.
 
 ## 🔧 Error Codes
 

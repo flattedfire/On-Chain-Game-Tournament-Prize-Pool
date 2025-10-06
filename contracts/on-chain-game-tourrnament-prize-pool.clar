@@ -42,6 +42,16 @@
     withdrawn: bool
 })
 
+(define-map player-statistics principal {
+    tournaments-joined: uint,
+    tournaments-won: uint,
+    total-prizes-claimed: uint,
+    total-entry-fees-paid: uint,
+    win-rate: uint,
+    net-profit: uint,
+    last-active: uint
+})
+
 (define-public (create-tournament (name (string-ascii 50)) (entry-fee uint))
     (let ((tournament-id (+ (var-get tournament-counter) u1)))
         (asserts! (> entry-fee u0) ERR_INVALID_AMOUNT)
@@ -86,6 +96,8 @@
             participant-count: (+ participant-count u1),
             total-pool: (+ (get total-pool tournament-data) entry-fee)
         }))
+        
+        (update-player-join-stats tx-sender entry-fee)
         
         (ok true)
     )
@@ -157,6 +169,72 @@
     )
 )
 
+(define-private (update-player-join-stats (player principal) (entry-fee uint))
+    (let ((current-stats (default-to 
+            {
+                tournaments-joined: u0,
+                tournaments-won: u0,
+                total-prizes-claimed: u0,
+                total-entry-fees-paid: u0,
+                win-rate: u0,
+                net-profit: u0,
+                last-active: u0
+            }
+            (map-get? player-statistics player)))
+          (new-tournaments-joined (+ (get tournaments-joined current-stats) u1))
+          (new-entry-fees-paid (+ (get total-entry-fees-paid current-stats) entry-fee)))
+        (map-set player-statistics player {
+            tournaments-joined: new-tournaments-joined,
+            tournaments-won: (get tournaments-won current-stats),
+            total-prizes-claimed: (get total-prizes-claimed current-stats),
+            total-entry-fees-paid: new-entry-fees-paid,
+            win-rate: (calculate-win-rate (get tournaments-won current-stats) new-tournaments-joined),
+            net-profit: (calculate-net-profit (get total-prizes-claimed current-stats) new-entry-fees-paid),
+            last-active: stacks-block-height
+        })
+    )
+)
+
+(define-private (update-player-win-stats (player principal) (prize-amount uint))
+    (let ((current-stats (default-to 
+            {
+                tournaments-joined: u0,
+                tournaments-won: u0,
+                total-prizes-claimed: u0,
+                total-entry-fees-paid: u0,
+                win-rate: u0,
+                net-profit: u0,
+                last-active: u0
+            }
+            (map-get? player-statistics player)))
+          (new-tournaments-won (+ (get tournaments-won current-stats) u1))
+          (new-prizes-claimed (+ (get total-prizes-claimed current-stats) prize-amount)))
+        (map-set player-statistics player {
+            tournaments-joined: (get tournaments-joined current-stats),
+            tournaments-won: new-tournaments-won,
+            total-prizes-claimed: new-prizes-claimed,
+            total-entry-fees-paid: (get total-entry-fees-paid current-stats),
+            win-rate: (calculate-win-rate new-tournaments-won (get tournaments-joined current-stats)),
+            net-profit: (calculate-net-profit new-prizes-claimed (get total-entry-fees-paid current-stats)),
+            last-active: stacks-block-height
+        })
+    )
+)
+
+(define-private (calculate-win-rate (wins uint) (total-tournaments uint))
+    (if (> total-tournaments u0)
+        (/ (* wins u100) total-tournaments)
+        u0
+    )
+)
+
+(define-private (calculate-net-profit (total-prizes uint) (total-fees uint))
+    (if (>= total-prizes total-fees)
+        (- total-prizes total-fees)
+        u0
+    )
+)
+
 (define-public (claim-prize (tournament-id uint))
     (let ((participant-data (unwrap! (map-get? participant-tournaments {participant: tx-sender, tournament-id: tournament-id}) ERR_NOT_PARTICIPANT))
           (tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND))
@@ -169,6 +247,8 @@
         
         (map-set participant-tournaments {participant: tx-sender, tournament-id: tournament-id} 
                  (merge participant-data {prize-claimed: true}))
+        
+        (update-player-win-stats tx-sender prize-amount)
         
         (ok prize-amount)
     )
@@ -352,4 +432,36 @@
 
 (define-read-only (get-sponsor-info (tournament-id uint) (sponsor principal))
     (map-get? tournament-sponsors {tournament-id: tournament-id, sponsor: sponsor})
+)
+
+(define-read-only (get-player-statistics (player principal))
+    (map-get? player-statistics player)
+)
+
+(define-read-only (get-player-win-rate (player principal))
+    (match (map-get? player-statistics player)
+        stats (some (get win-rate stats))
+        none
+    )
+)
+
+(define-read-only (get-player-net-profit (player principal))
+    (match (map-get? player-statistics player)
+        stats (some (get net-profit stats))
+        none
+    )
+)
+
+(define-read-only (get-player-total-wins (player principal))
+    (match (map-get? player-statistics player)
+        stats (some (get tournaments-won stats))
+        none
+    )
+)
+
+(define-read-only (get-player-total-tournaments (player principal))
+    (match (map-get? player-statistics player)
+        stats (some (get tournaments-joined stats))
+        none
+    )
 )
