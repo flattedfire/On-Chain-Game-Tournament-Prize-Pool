@@ -42,6 +42,8 @@
     withdrawn: bool
 })
 
+(define-map tournament-delegates {tournament-id: uint, delegate: principal} bool)
+
 (define-map player-statistics principal {
     tournaments-joined: uint,
     tournaments-won: uint,
@@ -112,7 +114,7 @@
           (distributable-pool (- combined-pool organizer-fee))
           (winners-count (len winners))
           (prize-per-winner (if (> winners-count u0) (/ distributable-pool winners-count) u0)))
-        (asserts! (is-eq tx-sender (get organizer tournament-data)) ERR_UNAUTHORIZED)
+        (asserts! (or (is-eq tx-sender (get organizer tournament-data)) (is-some (map-get? tournament-delegates {tournament-id: tournament-id, delegate: tx-sender}))) ERR_UNAUTHORIZED)
         (asserts! (is-eq (get status tournament-data) "open") ERR_TOURNAMENT_ENDED)
         (asserts! (> winners-count u0) ERR_INVALID_AMOUNT)
         (asserts! (<= winners-count u10) ERR_INVALID_AMOUNT)
@@ -258,7 +260,7 @@
     (let ((tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND))
           (participants (get participants tournament-data))
           (entry-fee (get entry-fee tournament-data)))
-        (asserts! (is-eq tx-sender (get organizer tournament-data)) ERR_UNAUTHORIZED)
+        (asserts! (or (is-eq tx-sender (get organizer tournament-data)) (is-some (map-get? tournament-delegates {tournament-id: tournament-id, delegate: tx-sender}))) ERR_UNAUTHORIZED)
         (asserts! (is-eq (get status tournament-data) "open") ERR_TOURNAMENT_ENDED)
         
         (unwrap! (refund-participants tournament-id participants entry-fee) ERR_INSUFFICIENT_BALANCE)
@@ -288,7 +290,7 @@
 
 (define-public (withdraw-unclaimed-funds (tournament-id uint))
     (let ((tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND)))
-        (asserts! (is-eq tx-sender (get organizer tournament-data)) ERR_UNAUTHORIZED)
+        (asserts! (or (is-eq tx-sender (get organizer tournament-data)) (is-some (map-get? tournament-delegates {tournament-id: tournament-id, delegate: tx-sender}))) ERR_UNAUTHORIZED)
         (asserts! (is-eq (get status tournament-data) "ended") ERR_TOURNAMENT_ACTIVE)
         (asserts! (> (- stacks-block-height (unwrap! (get ended-at tournament-data) ERR_NOT_FOUND)) u1000) ERR_TOURNAMENT_ACTIVE)
         
@@ -297,6 +299,26 @@
             (ok contract-balance)
         )
     )
+)
+
+(define-public (authorize-delegate (tournament-id uint) (delegate principal))
+    (let ((tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND)))
+        (asserts! (is-eq tx-sender (get organizer tournament-data)) ERR_UNAUTHORIZED)
+        (map-set tournament-delegates {tournament-id: tournament-id, delegate: delegate} true)
+        (ok true)
+    )
+)
+
+(define-public (revoke-delegate (tournament-id uint) (delegate principal))
+    (let ((tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND)))
+        (asserts! (is-eq tx-sender (get organizer tournament-data)) ERR_UNAUTHORIZED)
+        (map-delete tournament-delegates {tournament-id: tournament-id, delegate: delegate})
+        (ok true)
+    )
+)
+
+(define-read-only (is-delegate (tournament-id uint) (delegate principal))
+    (is-some (map-get? tournament-delegates {tournament-id: tournament-id, delegate: delegate}))
 )
 
 (define-public (sponsor-tournament (tournament-id uint) (amount uint))
