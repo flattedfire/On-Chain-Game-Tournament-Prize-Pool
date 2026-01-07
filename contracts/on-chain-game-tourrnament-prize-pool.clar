@@ -156,6 +156,57 @@
     )
 )
 
+(define-private (sum-fold (share uint) (acc uint))
+    (+ acc share)
+)
+
+(define-private (sum-distribution (distribution (list 10 uint)))
+    (fold sum-fold distribution u0)
+)
+
+(define-private (distribute-custom-prizes (tournament-id uint) (winners (list 10 principal)) (distribution (list 10 uint)) (pool uint))
+    (and
+        (set-winner-prize tournament-id (element-at winners u0) (/ (* pool (default-to u0 (element-at distribution u0))) u100))
+        (set-winner-prize tournament-id (element-at winners u1) (/ (* pool (default-to u0 (element-at distribution u1))) u100))
+        (set-winner-prize tournament-id (element-at winners u2) (/ (* pool (default-to u0 (element-at distribution u2))) u100))
+        (set-winner-prize tournament-id (element-at winners u3) (/ (* pool (default-to u0 (element-at distribution u3))) u100))
+        (set-winner-prize tournament-id (element-at winners u4) (/ (* pool (default-to u0 (element-at distribution u4))) u100))
+        (set-winner-prize tournament-id (element-at winners u5) (/ (* pool (default-to u0 (element-at distribution u5))) u100))
+        (set-winner-prize tournament-id (element-at winners u6) (/ (* pool (default-to u0 (element-at distribution u6))) u100))
+        (set-winner-prize tournament-id (element-at winners u7) (/ (* pool (default-to u0 (element-at distribution u7))) u100))
+        (set-winner-prize tournament-id (element-at winners u8) (/ (* pool (default-to u0 (element-at distribution u8))) u100))
+        (set-winner-prize tournament-id (element-at winners u9) (/ (* pool (default-to u0 (element-at distribution u9))) u100))
+    )
+)
+
+(define-public (end-tournament-custom (tournament-id uint) (winners (list 10 principal)) (distribution (list 10 uint)))
+    (let ((tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND))
+          (total-pool (get total-pool tournament-data))
+          (sponsorship-pool (get sponsorship-pool tournament-data))
+          (combined-pool (+ total-pool sponsorship-pool))
+          (organizer-fee (/ combined-pool u20))
+          (distributable-pool (- combined-pool organizer-fee))
+          (winners-count (len winners))
+          (distribution-count (len distribution))
+          (distribution-sum (sum-distribution distribution)))
+        (asserts! (or (is-eq tx-sender (get organizer tournament-data)) (is-some (map-get? tournament-delegates {tournament-id: tournament-id, delegate: tx-sender}))) ERR_UNAUTHORIZED)
+        (asserts! (is-eq (get status tournament-data) "open") ERR_TOURNAMENT_ENDED)
+        (asserts! (> winners-count u0) ERR_INVALID_AMOUNT)
+        (asserts! (<= winners-count u10) ERR_INVALID_AMOUNT)
+        (asserts! (is-eq winners-count distribution-count) ERR_INVALID_AMOUNT)
+        (asserts! (is-eq distribution-sum u100) ERR_INVALID_AMOUNT)
+        (unwrap! (ok (distribute-custom-prizes tournament-id winners distribution distributable-pool)) ERR_INVALID_AMOUNT)
+        (try! (as-contract (stx-transfer? organizer-fee tx-sender (get organizer tournament-data))))
+        (map-set tournaments tournament-id (merge tournament-data {
+            status: "ended",
+            winners: winners,
+            prize-distribution: distribution,
+            ended-at: (some stacks-block-height)
+        }))
+        (ok true)
+    )
+)
+
 (define-private (set-winner-prize (tournament-id uint) (winner-opt (optional principal)) (prize-amount uint))
     (match winner-opt
         winner
