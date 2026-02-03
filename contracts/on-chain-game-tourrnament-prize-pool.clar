@@ -24,6 +24,7 @@
     status: (string-ascii 20),
     participants: (list 100 principal),
     participant-count: uint,
+    max-participants: uint,
     winners: (list 10 principal),
     prize-distribution: (list 10 uint),
     created-at: uint,
@@ -66,6 +67,7 @@
             status: "open",
             participants: (list),
             participant-count: u0,
+            max-participants: u100,
             winners: (list),
             prize-distribution: (list),
             created-at: stacks-block-height,
@@ -80,10 +82,11 @@
     (let ((tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND))
           (entry-fee (get entry-fee tournament-data))
           (current-participants (get participants tournament-data))
-          (participant-count (get participant-count tournament-data)))
+          (participant-count (get participant-count tournament-data))
+          (max-participants (get max-participants tournament-data)))
         (asserts! (is-eq (get status tournament-data) "open") ERR_TOURNAMENT_ENDED)
         (asserts! (is-none (map-get? participant-tournaments {participant: tx-sender, tournament-id: tournament-id})) ERR_ALREADY_JOINED)
-        (asserts! (< participant-count u100) ERR_TOURNAMENT_ACTIVE)
+        (asserts! (< participant-count max-participants) ERR_TOURNAMENT_ACTIVE)
         
         (try! (stx-transfer? entry-fee tx-sender (as-contract tx-sender)))
         
@@ -368,8 +371,39 @@
     )
 )
 
+(define-public (pause-tournament (tournament-id uint))
+    (let ((tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND)))
+        (asserts! (or (is-eq tx-sender (get organizer tournament-data)) (is-some (map-get? tournament-delegates {tournament-id: tournament-id, delegate: tx-sender}))) ERR_UNAUTHORIZED)
+        (asserts! (is-eq (get status tournament-data) "open") ERR_TOURNAMENT_ENDED)
+        (map-set tournaments tournament-id (merge tournament-data {status: "paused"}))
+        (ok true)
+    )
+)
+
+(define-public (resume-tournament (tournament-id uint))
+    (let ((tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND)))
+        (asserts! (or (is-eq tx-sender (get organizer tournament-data)) (is-some (map-get? tournament-delegates {tournament-id: tournament-id, delegate: tx-sender}))) ERR_UNAUTHORIZED)
+        (asserts! (is-eq (get status tournament-data) "paused") ERR_TOURNAMENT_ACTIVE)
+        (map-set tournaments tournament-id (merge tournament-data {status: "open"}))
+        (ok true)
+    )
+)
+
 (define-read-only (is-delegate (tournament-id uint) (delegate principal))
     (is-some (map-get? tournament-delegates {tournament-id: tournament-id, delegate: delegate}))
+)
+
+(define-public (set-max-participants (tournament-id uint) (max uint))
+    (let ((tournament-data (unwrap! (map-get? tournaments tournament-id) ERR_NOT_FOUND))
+          (participant-count (get participant-count tournament-data)))
+        (asserts! (or (is-eq tx-sender (get organizer tournament-data)) (is-some (map-get? tournament-delegates {tournament-id: tournament-id, delegate: tx-sender}))) ERR_UNAUTHORIZED)
+        (asserts! (is-eq (get status tournament-data) "open") ERR_TOURNAMENT_ENDED)
+        (asserts! (> max u0) ERR_INVALID_AMOUNT)
+        (asserts! (<= max u100) ERR_INVALID_AMOUNT)
+        (asserts! (>= max participant-count) ERR_INVALID_AMOUNT)
+        (map-set tournaments tournament-id (merge tournament-data {max-participants: max}))
+        (ok max)
+    )
 )
 
 (define-public (sponsor-tournament (tournament-id uint) (amount uint))
